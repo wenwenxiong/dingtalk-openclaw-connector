@@ -553,17 +553,17 @@ async function extractVideoMetadata(
     const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
     ffmpeg.setFfmpegPath(ffmpegPath);
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       ffmpeg.ffprobe(filePath, (err: any, metadata: any) => {
         if (err) {
           log?.error?.(`[DingTalk][Video] 提取元数据失败: ${err.message}`);
-          return reject(err);
+          return resolve({ duration: 0, width: 0, height: 0 });
         }
 
         const videoStream = metadata.streams.find((s: any) => s.codec_type === 'video');
         if (!videoStream) {
           log?.warn?.(`[DingTalk][Video] 未找到视频流`);
-          return resolve(null);
+          return resolve({ duration: 0, width: 0, height: 0 });
         }
 
         const result = {
@@ -578,7 +578,7 @@ async function extractVideoMetadata(
     });
   } catch (err: any) {
     log?.error?.(`[DingTalk][Video] ffprobe 失败: ${err.message}`);
-    return null;
+    return { duration: 0, width: 0, height: 0 };
   }
 }
 
@@ -596,7 +596,7 @@ async function extractVideoThumbnail(
     const path = await import('path');
     ffmpeg.setFfmpegPath(ffmpegPath);
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       ffmpeg(videoPath)
         .screenshots({
           count: 1,
@@ -611,7 +611,7 @@ async function extractVideoThumbnail(
         })
         .on('error', (err: any) => {
           log?.error?.(`[DingTalk][Video] 封面生成失败: ${err.message}`);
-          reject(err);
+          resolve(null);
         });
     });
   } catch (err: any) {
@@ -920,7 +920,7 @@ async function extractAudioDuration(
   log?: any,
 ): Promise<number | null> {
   try {
-    const { execFile } = require('child_process');
+    const { execFile } = await import('child_process');
     const ffprobeBin = getFfprobePath();
 
     return new Promise((resolve) => {
@@ -2385,7 +2385,7 @@ async function sendToUser(
     return { ok: false, error: 'Missing clientId or clientSecret', usedAICard: false };
   }
 
-  const userIdArray = Array.isArray(userIds) ? userIds : [userIds];
+  const userIdArray = (Array.isArray(userIds) ? userIds : [userIds]).filter((id) => Boolean(id));
   if (userIdArray.length === 0) {
     return { ok: false, error: 'userIds cannot be empty', usedAICard: false };
   }
@@ -3934,4 +3934,76 @@ export {
   sendProactive,
   // 钉钉文档客户端
   DingtalkDocsClient,
+};
+
+// ============ 测试辅助导出 ============
+// 仅用于单元测试，避免在业务代码中直接依赖内部实现细节
+export const __testables = {
+  // 会话 & 去重
+  normalizeSlashCommand,
+  buildSessionContext,
+  isMessageProcessed,
+  markMessageProcessed,
+  cleanupProcessedMessages,
+  // 配置 & Token
+  getConfig,
+  isConfigured,
+  getAccessToken,
+  getOapiAccessToken,
+  getUnionId,
+  // 媒体处理
+  toLocalPath,
+  processLocalImages,
+  uploadMediaToDingTalk,
+  downloadImageToFile,
+  downloadMediaByCode,
+  downloadFileByCode,
+  // 视频处理
+  extractVideoMetadata,
+  extractVideoThumbnail,
+  processVideoMarkers,
+  sendVideoMessage,
+  // 音频处理
+  getFfprobePath,
+  extractAudioDuration,
+  sendAudioMessage,
+  processAudioMarkers,
+  isAudioFile,
+  // 文件处理
+  extractFileMarkers,
+  sendFileMessage,
+  processFileMarkers,
+  // 消息内容提取
+  extractMessageContent,
+  // 消息发送
+  sendMarkdownMessage,
+  sendTextMessage,
+  sendMessage,
+  // 提示词与消息体
+  buildMediaSystemPrompt,
+  buildDeliverBody,
+  buildMsgPayload,
+  // AI Card
+  createAICard,
+  streamAICard,
+  finishAICard,
+  createAICardForTarget,
+  sendFileProactive,
+  sendAudioProactive,
+  sendVideoProactive,
+  sendAICardInternal,
+  sendAICardToUser,
+  sendAICardToGroup,
+  // 主动消息
+  sendNormalToUser,
+  sendNormalToGroup,
+  sendToUser,
+  sendToGroup,
+  sendProactive,
+  // Bindings 解析（测试时需 mock getRuntime/fs/path/os）
+  resolveAgentIdByBindings,
+  /** 仅测试用：注入 runtime 使 resolveAgentIdByBindings 不抛错 */
+  setRuntimeForTest(r: PluginRuntime | null) {
+    runtime = r;
+  },
 };

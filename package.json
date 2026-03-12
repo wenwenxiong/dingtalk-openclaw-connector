@@ -8,8 +8,11 @@
     "build": "echo 'No build needed - jiti loads TS at runtime'",
     "lint": "echo 'Lint check skipped'",
     "lint:fix": "echo 'Lint fix skipped'",
-    "test": "echo 'Tests skipped'",
-    "test:watch": "echo 'Tests skipped'",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
+    "test:integration": "vitest run tests/integration",
     "type-check": "npx tsc --noEmit",
     "version:check": "echo 'Version check skipped'",
     "release:prepare": "echo 'Release prepare skipped'",
@@ -39,12 +42,17 @@
     "access": "public"
   },
   "dependencies": {
-    "dingtalk-stream": "^2.1.4",
-    "axios": "^1.6.0",
-    "fluent-ffmpeg": "^2.1.3",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "axios": "^1.6.0",
+    "dingtalk-stream": "^2.1.4",
+    "fluent-ffmpeg": "^2.1.3",
     "mammoth": "^1.8.0",
     "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.37",
+    "typescript": "^5.6.0",
+    "vitest": "^1.6.0"
   },
   "openclaw": {
     "extensions": [
