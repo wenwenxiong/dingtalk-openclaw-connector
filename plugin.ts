@@ -1051,7 +1051,6 @@ async function processFileMarkers(
 
 const DINGTALK_API = 'https://api.dingtalk.com';
 const DINGTALK_OAPI = 'https://oapi.dingtalk.com';
-const DINGTALK_PRE_API = 'https://pre-api.dingtalk.com';
 const AI_CARD_TEMPLATE_ID = '382e4302-551d-4880-bf29-a30acfab2e71.schema';
 
 // flowStatus 值与 Python SDK AICardStatus 一致（cardParamMap 的值必须是字符串）
@@ -2304,7 +2303,7 @@ async function addEmotionReply(config: any, data: any, log?: any): Promise<void>
   if (!data.msgId || !data.conversationId) return;
   try {
     const token = await getAccessToken(config);
-    await axios.post(`${DINGTALK_PRE_API}/v1.0/robot/emotion/reply`, {
+    await axios.post(`${DINGTALK_API}/v1.0/robot/emotion/reply`, {
       robotCode: data.robotCode ?? config.clientId,
       openMsgId: data.msgId,
       openConversationId: data.conversationId,
@@ -2331,7 +2330,7 @@ async function recallEmotionReply(config: any, data: any, log?: any): Promise<vo
   if (!data.msgId || !data.conversationId) return;
   try {
     const token = await getAccessToken(config);
-    await axios.post(`${DINGTALK_PRE_API}/v1.0/robot/emotion/recall`, {
+    await axios.post(`${DINGTALK_API}/v1.0/robot/emotion/recall`, {
       robotCode: data.robotCode ?? config.clientId,
       openMsgId: data.msgId,
       openConversationId: data.conversationId,
