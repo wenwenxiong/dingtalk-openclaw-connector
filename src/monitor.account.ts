@@ -7,6 +7,8 @@ import {
   buildSessionContext,
   getAccessToken,
   getOapiAccessToken,
+  addEmotionReply,
+  recallEmotionReply,
   DINGTALK_API,
   DINGTALK_OAPI
 } from "./utils";
@@ -394,6 +396,11 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
 
   if (!userContent && imageLocalPaths.length === 0) return;
 
+  // ===== 贴处理中表情 =====
+  addEmotionReply(config, data, log).catch(err => {
+    log?.warn?.(`[DingTalk][Emotion] 贴表情失败: ${err.message}`);
+  });
+
   // ===== 异步模式：立即回执 + 后台执行 + 主动推送结果 =====
   const asyncMode = config.asyncMode === true;
   log?.info?.(`[DingTalk][Async] asyncMode 检测: config.asyncMode=${config.asyncMode}, asyncMode=${asyncMode}`);
@@ -650,6 +657,11 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
       log?.error?.(`[DingTalk] 错误消息发送也失败: ${fallbackErr.message}`);
     }
   }
+
+  // ===== 撤回处理中表情 =====
+  recallEmotionReply(config, data, log).catch(err => {
+    log?.warn?.(`[DingTalk][Emotion] 撤回表情失败: ${err.message}`);
+  });
 }
 
 // handleDingTalkMessage 已在函数定义处直接导出

@@ -337,3 +337,65 @@ export function buildMediaSystemPrompt(): string {
 
 **重要**：文件大小不得超过 20MB，超过限制时告知用户文件过大。`;
 }
+
+// ============ 消息表情回复 ============
+
+/**
+ * 在用户消息上贴 🤔思考中 表情，表示正在处理
+ */
+export async function addEmotionReply(config: DingtalkConfig, data: any, log?: any): Promise<void> {
+  if (!data.msgId || !data.conversationId) return;
+  try {
+    const token = await getAccessToken(config);
+    const axios = (await import('axios')).default;
+    await axios.post(`${DINGTALK_API}/v1.0/robot/emotion/reply`, {
+      robotCode: data.robotCode ?? config.clientId,
+      openMsgId: data.msgId,
+      openConversationId: data.conversationId,
+      emotionType: 2,
+      emotionName: '🤔思考中',
+      textEmotion: {
+        emotionId: '2659900',
+        emotionName: '🤔思考中',
+        text: '🤔思考中',
+        backgroundId: 'im_bg_1',
+      },
+    }, {
+      headers: { 'x-acs-dingtalk-access-token': token, 'Content-Type': 'application/json' },
+      timeout: 5_000,
+    });
+    log?.info?.(`[DingTalk][Emotion] 贴表情成功: msgId=${data.msgId}`);
+  } catch (err: any) {
+    log?.warn?.(`[DingTalk][Emotion] 贴表情失败（不影响主流程）: ${err.message}`);
+  }
+}
+
+/**
+ * 撤回用户消息上的 🤔思考中 表情
+ */
+export async function recallEmotionReply(config: DingtalkConfig, data: any, log?: any): Promise<void> {
+  if (!data.msgId || !data.conversationId) return;
+  try {
+    const token = await getAccessToken(config);
+    const axios = (await import('axios')).default;
+    await axios.post(`${DINGTALK_API}/v1.0/robot/emotion/recall`, {
+      robotCode: data.robotCode ?? config.clientId,
+      openMsgId: data.msgId,
+      openConversationId: data.conversationId,
+      emotionType: 2,
+      emotionName: '🤔思考中',
+      textEmotion: {
+        emotionId: '2659900',
+        emotionName: '🤔思考中',
+        text: '🤔思考中',
+        backgroundId: 'im_bg_1',
+      },
+    }, {
+      headers: { 'x-acs-dingtalk-access-token': token, 'Content-Type': 'application/json' },
+      timeout: 5_000,
+    });
+    log?.info?.(`[DingTalk][Emotion] 撤回表情成功: msgId=${data.msgId}`);
+  } catch (err: any) {
+    log?.warn?.(`[DingTalk][Emotion] 撤回表情失败（不影响主流程）: ${err.message}`);
+  }
+}
