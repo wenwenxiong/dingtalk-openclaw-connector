@@ -757,7 +757,41 @@ export async function sendMediaToDingTalk(params: {
       };
     }
     
-    // 对于视频、音频、文件，发送包含下载链接的文本消息
+    // 对于视频，使用视频标记机制
+    if (mediaType === 'video') {
+      // 构建视频标记
+      const videoMarker = `[DINGTALK_VIDEO]{"path":"${mediaUrl}"}[/DINGTALK_VIDEO]`;
+      
+      // 发送包含视频标记的文本消息
+      let content = text ? `${text}\n\n${videoMarker}` : videoMarker;
+      
+      // 处理视频标记（提取元数据、生成封面、上传、发送视频消息）
+      const { processVideoMarkers } = await import('./media.js');
+      content = await processVideoMarkers(
+        content,
+        '',
+        config,
+        oapiToken,
+        console,
+        true,  // useProactiveApi
+        targetParam
+      );
+      
+      // 发送处理后的内容（包含状态消息）
+      const result = await sendProactive(
+        config,
+        targetParam,
+        content,
+        { msgType: 'text', replyToId }
+      );
+      
+      return {
+        ...result,
+        processQueryKey: result.processQueryKey || 'video-message-sent',
+      };
+    }
+    
+    // 对于音频、文件，发送包含下载链接的文本消息
     const fs = await import('fs');
     const stats = fs.statSync(mediaUrl);
     const fileSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
@@ -768,15 +802,9 @@ export async function sendMediaToDingTalk(params: {
     // 根据媒体类型选择图标和描述
     let icon = '📄';
     let typeLabel = '文件';
-    if (mediaType === 'video') {
-      icon = '📹';
-      typeLabel = '视频';
-    } else if (mediaType === 'voice') {
+    if (mediaType === 'voice') {
       icon = '🎵';
       typeLabel = '音频';
-    } else if (mediaType === 'image') {
-      icon = '🖼️';
-      typeLabel = '图片';
     }
     
     const message = `${icon} ${typeLabel}文件已上传\n\n文件: ${fileName}\n大小: ${fileSizeMB} MB\n\n下载链接: ${downloadUrl}`;
