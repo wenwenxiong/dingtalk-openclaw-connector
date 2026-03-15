@@ -3611,22 +3611,21 @@ const dingtalkPlugin = {
 
       let stopped = false;
       
-      // 【应用层心跳机制】自定义温和的心跳检测，避免 SDK 的激进检测
-      // - 心跳间隔：30 秒（比 SDK 的 8 秒更宽松）
-      // - 超时时间：90 秒（允许 3 次心跳丢失）
-      // - 检测方式：检查最后收到消息的时间，如果超时则主动重连
-      let lastMessageTime = Date.now();
+      // 【应用层心跳机制】基于 WebSocket ping/pong 的主动心跳检测
+      // - 心跳间隔：30 秒
+      // - 超时时间：90 秒（允许 3 次 ping 无响应）
+      // - 检测方式：主动发送 ping，等待 pong 响应
+      let lastPongTime = Date.now();
+      let pendingPingId: string | null = null;
       const HEARTBEAT_INTERVAL = 30 * 1000; // 30 秒
       const HEARTBEAT_TIMEOUT = 90 * 1000;  // 90 秒
       
-      // 更新最后消息时间（每次收到消息时）
-      const originalRegisterCallbackListener = client.registerCallbackListener.bind(client);
-      client.registerCallbackListener = function(eventId: string, callback: any) {
-        return originalRegisterCallbackListener(eventId, async (res: any) => {
-          lastMessageTime = Date.now();
-          return callback(res);
-        });
-      };
+      // 监听 pong 响应（SDK 的 keepAlive=false 时仍然会收到服务端的 pong）
+      client.socket?.on('pong', () => {
+        lastPongTime = Date.now();
+        pendingPingId = null;
+        ctx.log?.debug?.(`[${account.accountId}] 收到 PONG 响应`);
+      });
       
       // 启动心跳检测定时器
       const heartbeatTimer = setInterval(async () => {
@@ -3635,11 +3634,11 @@ const dingtalkPlugin = {
           return;
         }
         
-        const elapsed = Date.now() - lastMessageTime;
+        const elapsed = Date.now() - lastPongTime;
         
-        // 如果超过 90 秒没有收到任何消息（包括心跳），认为连接可能已断开
+        // 如果超过 90 秒没有收到 pong，认为连接已断开
         if (elapsed > HEARTBEAT_TIMEOUT) {
-          ctx.log?.warn?.(`[${account.accountId}] ⚠️ 心跳超时：已 ${Math.round(elapsed / 1000)} 秒未收到消息，触发重连...`);
+          ctx.log?.warn?.(`[${account.accountId}] ⚠️ 心跳超时：已 ${Math.round(elapsed / 1000)} 秒未收到 PONG，触发重连...`);
           
           // 【关键修复】主动重连：先断开再重新建立连接
           try {
@@ -3651,8 +3650,9 @@ const dingtalkPlugin = {
             ctx.log?.info?.(`[${account.accountId}] 正在重新建立连接...`);
             await client.connect();
             
-            // 3. 重置最后消息时间，避免立即再次触发重连
-            lastMessageTime = Date.now();
+            // 3. 重置最后 pong 时间，避免立即再次触发重连
+            lastPongTime = Date.now();
+            pendingPingId = null;
             
             ctx.log?.info?.(`[${account.accountId}] ✅ 重连成功`);
           } catch (err: any) {
@@ -3662,16 +3662,39 @@ const dingtalkPlugin = {
             setTimeout(async () => {
               try {
                 await client.connect();
-                lastMessageTime = Date.now();
+                lastPongTime = Date.now();
+                pendingPingId = null;
                 ctx.log?.info?.(`[${account.accountId}] ✅ 重试重连成功`);
               } catch (retryErr: any) {
                 ctx.log?.error?.(`[${account.accountId}] ❌ 重试重连失败：${retryErr.message}`);
               }
             }, 5000);
           }
-        } else if (elapsed > HEARTBEAT_INTERVAL * 2) {
-          // 超过 60 秒未收到消息，输出警告
-          ctx.log?.debug?.(`[${account.accountId}] 心跳检测：已 ${Math.round(elapsed / 1000)} 秒未收到消息`);
+          return;
+        }
+        
+        // 如果还有 ping 在等待响应，检查是否超时
+        if (pendingPingId) {
+          ctx.log?.debug?.(`[${account.accountId}] 心跳检测：等待 PONG 响应中...`);
+          return;
+        }
+        
+        // 主动发送 ping 消息
+        try {
+          const pingId = `ping_${Date.now()}`;
+          pendingPingId = pingId;
+          
+          // 通过 WebSocket 直接发送 ping（使用 SDK 的 socket）
+          client.socket?.ping(JSON.stringify({
+            type: 'PING',
+            id: pingId,
+            timestamp: Date.now()
+          }));
+          
+          ctx.log?.debug?.(`[${account.accountId}] 发送 PING 请求：${pingId}`);
+        } catch (err: any) {
+          ctx.log?.error?.(`[${account.accountId}] 发送 PING 失败：${err.message}`);
+          // 发送失败也计入超时
         }
       }, HEARTBEAT_INTERVAL);
       
