@@ -5,7 +5,8 @@
 
 import axios from "axios";
 import type { DingtalkConfig } from "./types.ts";
-import { DINGTALK_API, getAccessToken, getOapiAccessToken } from "./utils.ts";
+import { DINGTALK_API, getAccessToken, getOapiAccessToken } from "../utils/index.ts";
+import { createLoggerFromConfig } from "../utils/logger.ts";
 import {
   processLocalImages,
   processVideoMarkers,
@@ -857,8 +858,16 @@ export async function sendMediaToDingTalk(params: {
   mediaUrl: string;
   replyToId?: string;
 }): Promise<SendResult> {
-  console.log(
-    "[sendMediaToDingTalk] 开始处理，params:",
+  // 临时调试：打印 config.debug 的值
+  console.log('[sendMediaToDingTalk] config.debug =', params.config?.debug, 'config =', JSON.stringify({
+    debug: params.config?.debug,
+    hasConfig: !!params.config,
+  }));
+  
+  const log = createLoggerFromConfig(params.config, 'sendMediaToDingTalk');
+  
+  log.info(
+    "开始处理，params:",
     JSON.stringify({
       target: params.target,
       text: params.text,
@@ -872,7 +881,7 @@ export async function sendMediaToDingTalk(params: {
 
   // 参数校验
   if (!target || typeof target !== "string") {
-    console.error("[sendMediaToDingTalk] target 参数无效:", target);
+    log.error("target 参数无效:", target);
     return { ok: false, error: "Invalid target parameter", usedAICard: false };
   }
 
@@ -882,16 +891,11 @@ export async function sendMediaToDingTalk(params: {
     ? { type: "user" as const, userId: target }
     : { type: "group" as const, openConversationId: target };
 
-  console.log(
-    "[sendMediaToDingTalk] 参数解析完成，mediaUrl:",
-    mediaUrl,
-    "type:",
-    typeof mediaUrl,
-  );
+  log.info("参数解析完成，mediaUrl:", mediaUrl, "type:", typeof mediaUrl);
 
   // 参数校验
   if (!mediaUrl) {
-    console.log("[sendMediaToDingTalk] mediaUrl 为空，返回错误提示");
+    log.info("mediaUrl 为空，返回错误提示");
     return sendProactive(config, targetParam, text ?? "⚠️ 缺少媒体文件 URL", {
       msgType: "text",
       replyToId,
@@ -900,7 +904,7 @@ export async function sendMediaToDingTalk(params: {
 
   // 1. 先发送文本消息（如果有）
   if (text?.trim()) {
-    console.log("[sendMediaToDingTalk] 先发送文本消息");
+    log.info("先发送文本消息");
     await sendProactive(config, targetParam, text, {
       msgType: "text",
       replyToId,
@@ -909,17 +913,14 @@ export async function sendMediaToDingTalk(params: {
 
   // 2. 上传媒体文件并发送媒体消息
   try {
-    console.log("[sendMediaToDingTalk] 开始获取 oapiToken");
+    log.info("开始获取 oapiToken");
     const oapiToken = await getOapiAccessToken(config);
-    console.log("[sendMediaToDingTalk] oapiToken 获取成功");
+    log.info("oapiToken 获取成功");
 
     // 根据文件扩展名判断媒体类型
-    console.log(
-      "[sendMediaToDingTalk] 开始解析文件扩展名，mediaUrl:",
-      mediaUrl,
-    );
+    log.info("开始解析文件扩展名，mediaUrl:", mediaUrl);
     const ext = mediaUrl.toLowerCase().split(".").pop() || "";
-    console.log("[sendMediaToDingTalk] 文件扩展名:", ext);
+    log.info("文件扩展名:", ext);
     let mediaType: "image" | "file" | "video" | "voice" = "file";
 
     if (["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext)) {
@@ -933,7 +934,7 @@ export async function sendMediaToDingTalk(params: {
     ) {
       mediaType = "voice";
     }
-    console.log("[sendMediaToDingTalk] 媒体类型判断完成:", mediaType);
+    log.info("媒体类型判断完成:", mediaType);
 
     // 上传文件到钉钉
     const uploadResult = await uploadMediaToDingTalk(
@@ -941,6 +942,7 @@ export async function sendMediaToDingTalk(params: {
       mediaType,
       oapiToken,
       20 * 1024 * 1024,
+      config.debug ?? false,
     );
 
     if (!uploadResult) {
@@ -957,7 +959,7 @@ export async function sendMediaToDingTalk(params: {
       "https://down.dingtalk.com/media/",
       "",
     );
-    console.log("[sendMediaToDingTalk] 提取 media_id:", mediaId);
+    log.info("提取 media_id:", mediaId);
 
     // 3. 根据媒体类型发送对应的消息
     const fileName = mediaUrl.split("/").pop() || "file";

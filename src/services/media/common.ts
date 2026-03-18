@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
+import { createLogger } from '../../utils/logger.ts';
 
 // ============ 常量 ============
 
@@ -19,7 +20,7 @@ export const IMAGE_EXTENSIONS = /\.(png|jpg|jpeg|gif|bmp|webp|tiff|svg)$/i;
 
 /** 本地图片路径正则表达式（跨平台） */
 export const LOCAL_IMAGE_RE =
-  /!\[([^\]]*)\]\(((?:file:\/\/\/|MEDIA:|attachment:\/\/\/)[^)]+|\/(?:tmp|var|private|Users|home|root)[^)]+|[A-Za-z]:[\\/][^)]+)\)/g;
+  /!\[([^\]]*)\]\(((?:file:\/\/|MEDIA:|attachment:\/\/)[^)]+|\/(?:tmp|var|private|Users|home|root)[^)]+|[A-Za-z]:[\\/][^)]+)\)/g;
 
 /** 纯文本图片路径正则表达式 */
 export const BARE_IMAGE_PATH_RE =
@@ -61,24 +62,45 @@ export async function uploadMediaToDingTalk(
   mediaType: 'image' | 'file' | 'video' | 'voice',
   oapiToken: string,
   maxSize: number = 20 * 1024 * 1024,
-  log?: any,
+  debug: boolean = false,
 ): Promise<string | null> {
+  const log = createLogger(debug, `DingTalk][${mediaType}`);
+  
   try {
     const FormData = (await import('form-data')).default;
 
     const absPath = toLocalPath(filePath);
     if (!fs.existsSync(absPath)) {
-      log?.warn?.(`[DingTalk][${mediaType}] 文件不存在：${absPath}`);
+      log.warn(`文件不存在：${absPath}`);
       return null;
     }
 
     const stats = fs.statSync(absPath);
     const fileSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+    const fileSize = stats.size;
 
+    // ✅ 对于视频和文件类型，如果超过 20MB，使用分块上传
+    if ((mediaType === 'video' || mediaType === 'file') && fileSize > CHUNK_CONFIG.SIZE_THRESHOLD) {
+      log.info(`文件超过 20MB，使用分块上传：${absPath} (${fileSizeMB}MB)`);
+      try {
+        const { uploadLargeFileByChunks } = await import('./chunk-upload.js');
+        const downloadCode = await uploadLargeFileByChunks(absPath, mediaType, oapiToken, debug);
+        if (downloadCode) {
+          log.info(`分块上传成功：${absPath}, download_code: ${downloadCode}`);
+          return downloadCode;
+        }
+        log.error(`分块上传失败：${absPath}`);
+      } catch (chunkErr: any) {
+        log.error(`分块上传异常：${chunkErr.message}`);
+      }
+      return null;
+    }
+
+    // 检查文件大小（对于小于 20MB 的文件）
     if (stats.size > maxSize) {
       const maxSizeMB = (maxSize / (1024 * 1024)).toFixed(0);
-      log?.warn?.(
-        `[DingTalk][${mediaType}] 文件过大：${absPath}, 大小：${fileSizeMB}MB, 超过限制 ${maxSizeMB}MB`,
+      log.warn(
+        `文件过大：${absPath}, 大小：${fileSizeMB}MB, 超过限制 ${maxSizeMB}MB`,
       );
       return null;
     }
