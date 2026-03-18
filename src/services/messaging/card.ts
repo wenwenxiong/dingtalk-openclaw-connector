@@ -204,7 +204,6 @@ export async function streamAICard(
         },
       },
     };
-    log?.info?.(`[DingTalk][AICard] PUT /v1.0/card/instances (INPUTING)`);
     try {
       const statusResp = await axios.put(
         `${DINGTALK_API}/v1.0/card/instances`,
@@ -287,9 +286,9 @@ export async function finishAICard(
         }),
       },
     },
+    cardUpdateOptions: { updateCardDataByKey: true },
   };
 
-  log?.info?.(`[DingTalk][AICard] PUT /v1.0/card/instances (FINISHED)`);
   try {
     const finishResp = await axios.put(
       `${DINGTALK_API}/v1.0/card/instances`,
