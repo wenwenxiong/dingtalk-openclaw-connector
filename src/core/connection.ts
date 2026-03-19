@@ -127,6 +127,52 @@ export async function monitorSingleAccount(
   let reconnectAttempts = 0;
   let keepAliveTimer: NodeJS.Timeout | null = null;
   let isStopped = false;
+  
+  // ============ 消息处理活跃标记 ============
+  // 用于在消息处理期间防止心跳超时触发重连
+  let activeMessageProcessing = false;
+  let messageProcessingKeepAliveTimer: NodeJS.Timeout | null = null;
+  
+  /**
+   * 标记消息处理开始，启动定期更新机制
+   * 在消息处理期间，每 30 秒更新一次 lastSocketAvailableTime
+   * 防止长时间处理（如复杂的 AI 任务）触发心跳超时
+   */
+  function markMessageProcessingStart() {
+    activeMessageProcessing = true;
+    lastSocketAvailableTime = Date.now();
+    
+    // 清理旧的定时器（如果存在）
+    if (messageProcessingKeepAliveTimer) {
+      clearInterval(messageProcessingKeepAliveTimer);
+    }
+    
+    // 每 30 秒更新一次，确保不会触发 90 秒超时
+    messageProcessingKeepAliveTimer = setInterval(() => {
+      if (activeMessageProcessing) {
+        lastSocketAvailableTime = Date.now();
+        logger.debug(`📝 消息处理中，更新 socket 可用时间`);
+      }
+    }, 30 * 1000); // 30 秒间隔
+    
+    logger.debug(`📝 消息处理开始，启动活跃标记定时器`);
+  }
+  
+  /**
+   * 标记消息处理结束，停止定期更新机制
+   */
+  function markMessageProcessingEnd() {
+    activeMessageProcessing = false;
+    
+    if (messageProcessingKeepAliveTimer) {
+      clearInterval(messageProcessingKeepAliveTimer);
+      messageProcessingKeepAliveTimer = null;
+    }
+    
+    // 最后更新一次时间
+    lastSocketAvailableTime = Date.now();
+    logger.debug(`✅ 消息处理结束，清理活跃标记定时器`);
+  }
 
   // ============ 辅助函数 ============
 
@@ -301,9 +347,15 @@ export async function monitorSingleAccount(
   function stop() {
     isStopped = true;
 
-    // 清理定时器
+    // 清理心跳定时器
     if (keepAliveTimer) clearInterval(keepAliveTimer);
     keepAliveTimer = null;
+
+    // 清理消息处理活跃标记定时器
+    if (messageProcessingKeepAliveTimer) {
+      clearInterval(messageProcessingKeepAliveTimer);
+      messageProcessingKeepAliveTimer = null;
+    }
 
     // 清理事件监听器
     if (client.socket) {
@@ -387,6 +439,9 @@ export async function monitorSingleAccount(
       }
 
       // 异步处理消息
+      // ✅ 标记消息处理开始，防止长时间处理触发心跳超时
+      markMessageProcessingStart();
+      
       try {
         // 解析消息数据
         const data = JSON.parse(res.data);
@@ -444,13 +499,21 @@ export async function monitorSingleAccount(
         logger.info(`========== 消息处理结束（成功） ==========\n`);
       } catch (error: any) {
         processedCount++;
-        log?.error?.(
-          `❌ 处理消息异常 (${processedCount}/${receivedCount}):`,
-        );
-        log?.error?.(`错误类型：${error.name || "Error"}`);
-        log?.error?.(`错误信息：${error.message}`);
-        log?.error?.(`错误堆栈:\n${error.stack}`);
+        const errorMsg = `❌ 处理消息异常 (${processedCount}/${receivedCount}): ${error?.message || "未知错误"}`;
+        const errorStack = error?.stack || "无堆栈信息";
+        
+        // 使用 logger 确保错误信息一定会被打印
+        logger.info(errorMsg);
+        logger.info(`错误堆栈:\n${errorStack}`);
+        
+        // 同时使用 log?.error 记录（如果可用）
+        log?.error?.(errorMsg);
+        log?.error?.(`错误堆栈:\n${errorStack}`);
+        
         logger.info(`========== 消息处理结束（失败） ==========\n`);
+      } finally {
+        // ✅ 无论成功或失败，都要标记消息处理结束
+        markMessageProcessingEnd();
       }
     });
 
