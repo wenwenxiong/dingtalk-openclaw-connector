@@ -115,7 +115,8 @@ export async function monitorSingleAccount(
     clientId: account.clientId,
     clientSecret: account.clientSecret,
     debug: account.config.debug,
-    endpoint: account.config.endpoint,
+    // 显式设置 HTTPS endpoint，防止被降级为 HTTP
+    endpoint: account.config.endpoint || "https://api.dingtalk.com",
     autoReconnect: false, // ❌ 禁用 SDK 自动重连
     keepAlive: false, // ❌ 禁用 SDK 心跳检测
   } as any);
