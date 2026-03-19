@@ -212,15 +212,37 @@ if echo "$INSTALLED_PLUGINS" | grep -q "dingtalk-connector"; then
     echo "📦 检测到已安装的 dingtalk-connector，正在卸载..."
     # 使用 -f 强制卸载，避免交互式确认
     # 捕获卸载错误，即使失败也继续执行（可能是插件文件已被手动删除）
+    UNINSTALL_FAILED=false
     if command -v yes &> /dev/null; then
         yes | openclaw plugins uninstall dingtalk-connector 2>&1 || {
-            echo "⚠️  卸载过程出现错误（可能插件文件已被手动删除），将继续安装..."
+            echo "⚠️  卸载过程出现错误（可能插件文件已被手动删除）"
+            UNINSTALL_FAILED=true
         }
     else
         echo "y" | openclaw plugins uninstall dingtalk-connector 2>&1 || {
-            echo "⚠️  卸载过程出现错误（可能插件文件已被手动删除），将继续安装..."
+            echo "⚠️  卸载过程出现错误（可能插件文件已被手动删除）"
+            UNINSTALL_FAILED=true
         }
     fi
+    
+    # 如果卸载失败，手动清理配置文件中的残留配置
+    if [ "$UNINSTALL_FAILED" = true ] && [ "$HAS_JQ" = true ]; then
+        echo "🧹 清理配置文件中的残留配置..."
+        if [ -f "$CONFIG_FILE" ]; then
+            TEMP_CLEANUP=$(mktemp)
+            TEMP_FILES+=("$TEMP_CLEANUP")
+            
+            # 删除 channels.dingtalk-connector 配置
+            if jq 'del(.channels."dingtalk-connector")' "$CONFIG_FILE" > "$TEMP_CLEANUP"; then
+                mv "$TEMP_CLEANUP" "$CONFIG_FILE"
+                echo "✅ 配置文件已清理"
+            else
+                echo "⚠️  无法清理配置文件，请手动检查"
+                rm -f "$TEMP_CLEANUP"
+            fi
+        fi
+    fi
+    
     echo "✅ 旧版本处理完成"
 else
     echo "ℹ️  未检测到已安装的 dingtalk-connector，跳过卸载"
