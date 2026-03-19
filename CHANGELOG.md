@@ -1,10 +1,96 @@
 # Changelog
 
-本文档记录所有重要的变更。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
-版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
+All notable changes to this project will be documented in this file.
 
-This document records all significant changes. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and version numbers follow [Semantic Versioning](https://semver.org/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.7.10] - 2026-03-16
+
+### 新增 / Added
+- ✨ **WebSocket 心跳重连机制优化** - 关闭 DWClient 的 `autoConnect`，采用应用层自动重连机制（修复 DWClient 重连 bug）；添加指数退避重连策略，避免雪崩效应；使用 WebSocket 原生 Ping 进行心跳检测  
+  **WebSocket heartbeat & reconnect optimization** - Disabled DWClient's `autoConnect`, implemented app-layer auto-reconnect (fixing DWClient bug); added exponential backoff to avoid avalanche; using WebSocket native Ping for heartbeat
+- ✨ **socket-manager 模块** - 新增模块统一管理 WebSocket 连接生命周期，包括心跳检测、自动重连、指数退避、事件监听等  
+  **socket-manager module** - New module for unified WebSocket connection lifecycle management, including heartbeat, auto-reconnect, exponential backoff, event listening
+- ✨ **debug 参数** - 添加 `debug` 配置项控制详细日志输出，便于问题排查  
+  **debug parameter** - Added `debug` config to control detailed log output for easier troubleshooting
+- ✨ **WebSocket 无限重连机制** - 移除最大重连次数限制，实现无限重连，确保长连接服务的高可用性  
+  **WebSocket infinite reconnection** - Removed maximum reconnection attempt limit, implemented infinite reconnection to ensure high availability for long-lived connection services
+
+### 修复 / Fixes
+- 🐛 **修复 DWClient 重连 bug** - DWClient 内置重连机制存在缺陷，通过应用层重连机制替代，确保连接稳定可靠  
+  **Fixed DWClient reconnect bug** - DWClient's built-in reconnect has defects; replaced with app-layer reconnect for stable connection
+- 🐛 **长连接静默断开** - 通过应用层心跳检测连接活性，超时后主动重连，减少因长时间无数据导致的静默断连且无法恢复  
+  **Long-lived connection silent disconnect** - App-layer heartbeat detects liveness and triggers reconnect on timeout, reducing silent disconnects when idle
+### 改进 / Improvements
+- ✅ **DWClient 配置** - 设置 `autoReconnect: false`、`keepAlive: false`，由应用层接管重连和心跳，避免与钉钉服务端策略冲突  
+  **DWClient config** - Set `autoReconnect: false`, `keepAlive: false`; app-layer takes over reconnect and heartbeat to avoid server conflicts
+- ✅ **指数退避策略** - 公式 `baseBackoffDelay * Math.pow(2, attempt) + jitter(0-1s)`，最大退避 30 秒，避免雪崩效应  
+  **Exponential backoff strategy** - Formula `baseBackoffDelay * Math.pow(2, attempt) + jitter(0-1s)`, max 30s backoff to avoid avalanche effect
+- ✅ **统一事件监听** - `pong`、`message`、`close`、`open` 四个事件统一管理和清理，提升代码可维护性  
+  **Unified event listening** - `pong`, `message`, `close`, `open` events managed and cleaned up uniformly, improving maintainability
+- ✅ **配置简化** - 从 `SocketManagerConfig` 中移除 `maxReconnectAttempts` 配置项，简化配置复杂度  
+  **Configuration simplification** - Removed `maxReconnectAttempts` from `SocketManagerConfig`, simplifying configuration
+- ✅ **日志输出优化** - 更新重连日志格式，移除最大次数显示（从 "尝试 X/5" 改为 "尝试 X"）  
+  **Log output optimization** - Updated reconnection log format, removed maximum attempt display (from "attempt X/5" to "attempt X")
+
+### 技术细节 / Technical Details
+- **退避策略**：指数退避 + 随机抖动，公式 `baseBackoffDelay * Math.pow(2, attempt) + jitter(0-1s)`  
+- **最大退避**：30 秒（由 `maxBackoffDelay` 限制）  
+- **重置条件**：重连成功后 `reconnectAttempts` 归零  
+- **立即重连**：心跳检测失败、WebSocket close、disconnect 消息触发时立即重连，不退避  
+
+## [0.7.9] - 2026-03-13
+
+### 新增 / Added
+- ✨ **应用层心跳机制** - 钉钉 Stream 客户端使用自定义心跳（WebSocket ping/pong，30 秒间隔、90 秒超时），超时后主动断开并重连，重连失败 5 秒后重试  
+  **Application-layer heartbeat** - Stream client uses custom ping/pong heartbeat (30s interval, 90s timeout), reconnects on timeout with 5s retry on failure
+- ✨ **统一停止与清理** - 停止客户端时通过 `doStop` 统一清理心跳定时器并调用 `client.disconnect()`，确保连接正确关闭  
+  **Unified stop & cleanup** - `doStop` clears heartbeat timer and calls `client.disconnect()` when stopping the client
+
+### 修复 / Fixes
+- 🐛 **长连接静默断开** - 关闭 SDK 激进 keepAlive（8 秒超时），改用应用层心跳，减少因长时间无数据导致的静默断连且无法恢复  
+  **Long-lived connection silent disconnect** - Disabled SDK aggressive keepAlive (8s timeout), use app-layer heartbeat to reduce silent disconnects when idle
+
+### 改进 / Improvements
+- ✅ **DWClient 配置** - 启用 `autoReconnect: true`，设置 `keepAlive: false`，由应用层心跳替代 SDK 心跳，避免与钉钉服务端策略冲突  
+  **DWClient config** - `autoReconnect: true`, `keepAlive: false`; app-layer heartbeat replaces SDK keepAlive to avoid conflicts with server
+
+## [0.7.8] - 2026-03-13
+
+### 修复 / Fixes
+- 🐛 **AI 卡片模版与渲染优化** - 更新 AI 卡片模版 ID，使卡片样式与最新官方规范保持一致，并提升多终端展示效果  
+  **AI card template & rendering optimization** - Updated the AI card template ID to match the latest official standard and improved rendering across clients
+- 🐛 **Markdown 表格渲染修复** - 在发送到钉钉前自动为 Markdown 表格头部补充必要空行，避免因缺少空行导致表格被当作普通文本渲染  
+  **Markdown table rendering fix** - Automatically inserts required blank lines before Markdown table headers to prevent DingTalk from rendering tables as plain text
+- 🐛 **消息去重逻辑优化** - 将消息去重维度从「账号 + 消息 ID」简化为单一「消息 ID」，避免多账号场景下的重复处理或误判  
+  **Message de-duplication optimization** - Simplified de-duplication from `(accountId, messageId)` to `messageId` only, preventing duplicate handling or misjudgment in multi-account scenarios
+
+### 改进 / Improvements
+- ✅ **统一 Markdown 修正管道** - 对 AI 卡片流式内容、最终内容、普通 Markdown 消息及 `sampleMarkdown` 卡片文本统一应用 Markdown 修正规则，确保表格等格式在各入口行为一致  
+  **Unified Markdown normalization pipeline** - Applies the same Markdown normalization to streaming AI card content, final content, regular Markdown messages, and `sampleMarkdown` card text for consistent behavior
+- ✅ **AI 卡片状态内容一致性** - 在完成 AI 卡片时，对展示内容和写入 `cardParamMap.msgContent` 的内容使用同一份 Markdown 修正结果，确保用户看到的内容与内部状态一致  
+  **Consistent AI card status content** - Ensures the same normalized Markdown is used both for the visible content and `cardParamMap.msgContent` when finishing AI cards
+
+## [0.7.7] - 2026-03-13
+
+### 新增 / Added
+- ✨ **自定义 Gateway URL 支持** - 新增 `gatewayBaseUrl` 配置项，支持通过自定义 URL（如 Nginx 反向代理到 TLS/HTTPS Gateway）访问 Gateway  
+  **Custom Gateway URL support** - Added `gatewayBaseUrl` option to allow using a custom URL (e.g., Nginx reverse proxy to a TLS/HTTPS Gateway)
+- ✨ **钉钉「思考中」表情反馈** - 在处理用户消息期间为原消息贴上「🤔思考中」表情，处理结束后自动撤回，清晰展示处理进度  
+  **DingTalk “thinking” emotion feedback** - Attaches a “🤔 Thinking” emotion to the original user message while processing and automatically recalls it after completion to clearly indicate progress
+- ✨ **测试基础设施完善** - 引入 Vitest 及多种测试脚本（run/watch/coverage/ui/integration），为后续自动化测试和回归验证提供基础  
+  **Improved testing infrastructure** - Introduced Vitest and multiple test scripts (run/watch/coverage/ui/integration) to enable better automated and regression testing
+- ✨ **Issue Webhook 工作流** - 新增 GitHub Actions 工作流，将 Issue 变更以统一 JSON 格式推送到配置的 Webhook  
+  **Issue webhook workflow** - Added a GitHub Actions workflow to push Issue changes as unified JSON payloads to a configured webhook
+
+### 修复 / Fixes
+- 🐛 **媒体元数据与缩略图提取更健壮** - ffprobe 或缩略图生成失败时不再中断主流程，而是返回默认元数据或空缩略图  
+  **More robust media metadata & thumbnail extraction** - ffprobe or thumbnail generation failures no longer abort the main flow but return default metadata or a null thumbnail instead
+- 🐛 **音频时长提取兼容性改进** - 使用动态 `import('child_process')` 替代 `require('child_process')`，提升在不同运行环境下的兼容性  
+  **Audio duration extraction compatibility** - Replaced `require('child_process')` with dynamic `import('child_process')` to improve compatibility across environments
+- 🐛 **主动消息用户列表校验** - 为主动消息的 `userIds` 列表增加空值过滤，避免因无效用户 ID 导致请求失败  
+  **Proactive message user list validation** - Added empty value filtering for the `userIds` list in proactive messages to prevent request failures caused by invalid IDs
 
 ## [0.7.6] - 2026-03-12
 
@@ -192,4 +278,3 @@ and version numbers follow [Semantic Versioning](https://semver.org/).
   Added "Multi-Agent Configuration" section with detailed configuration examples and instructions
 - 补充常见问题解答  
   Added FAQ section
-
