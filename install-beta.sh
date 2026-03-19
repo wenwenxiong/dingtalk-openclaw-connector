@@ -235,10 +235,11 @@ if echo "$INSTALLED_PLUGINS" | grep -q "dingtalk-connector"; then
             # 删除 channels.dingtalk-connector 和 plugins 相关配置
             if jq 'del(.channels."dingtalk-connector") | 
                   del(.plugins.entries."dingtalk-connector") |
-                  .plugins.allow = (.plugins.allow // [] | map(select(. != "dingtalk-connector")))' \
+                  .plugins.allow = (.plugins.allow // [] | map(select(. != "dingtalk-connector"))) |
+                  .plugins.load.paths = (.plugins.load.paths // [] | map(select(. | contains("dingtalk-openclaw-connector") | not)))' \
                   "$CONFIG_FILE" > "$TEMP_CLEANUP"; then
                 mv "$TEMP_CLEANUP" "$CONFIG_FILE"
-                echo "✅ 配置文件已清理（channels + plugins）"
+                echo "✅ 配置文件已清理（channels + plugins + load paths）"
             else
                 echo "⚠️  无法清理配置文件，请手动检查"
                 rm -f "$TEMP_CLEANUP"
