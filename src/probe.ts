@@ -1,11 +1,50 @@
 import { raceWithTimeoutAndAbort } from "./utils/async.ts";
 import type { DingtalkProbeResult } from "./types/index.ts";
 
-/** Cache probe results to reduce repeated health-check calls. */
-const probeCache = new Map<string, { result: DingtalkProbeResult; expiresAt: number }>();
+/** LRU Cache for probe results to reduce repeated health-check calls. */
+class LRUCache<K, V> {
+  private cache = new Map<K, V>();
+  private maxSize: number;
+
+  constructor(maxSize: number) {
+    this.maxSize = maxSize;
+  }
+
+  get(key: K): V | undefined {
+    const value = this.cache.get(key);
+    if (value !== undefined) {
+      // 重新插入以更新访问顺序
+      this.cache.delete(key);
+      this.cache.set(key, value);
+    }
+    return value;
+  }
+
+  set(key: K, value: V): void {
+    // 如果已存在，先删除（更新顺序）
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    }
+    
+    this.cache.set(key, value);
+    
+    // 超过大小限制时删除最旧的（最少使用的）
+    if (this.cache.size > this.maxSize) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) {
+        this.cache.delete(oldest);
+      }
+    }
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+}
+
+const probeCache = new LRUCache<string, { result: DingtalkProbeResult; expiresAt: number }>(64);
 const PROBE_SUCCESS_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const PROBE_ERROR_TTL_MS = 60 * 1000; // 1 minute
-const MAX_PROBE_CACHE_SIZE = 64;
 export const DINGTALK_PROBE_REQUEST_TIMEOUT_MS = 10_000;
 export type ProbeDingtalkOptions = {
   timeoutMs?: number;
@@ -25,12 +64,6 @@ function setCachedProbeResult(
   ttlMs: number,
 ): DingtalkProbeResult {
   probeCache.set(cacheKey, { result, expiresAt: Date.now() + ttlMs });
-  if (probeCache.size > MAX_PROBE_CACHE_SIZE) {
-    const oldest = probeCache.keys().next().value;
-    if (oldest !== undefined) {
-      probeCache.delete(oldest);
-    }
-  }
   return result;
 }
 

@@ -42,7 +42,6 @@ export function buildSessionContext(params: {
   groupSubject?: string;
   separateSessionByConversation?: boolean;
   groupSessionScope?: 'group' | 'group_sender';
-  // 新版本可选：跨会话共享记忆（旧实现不处理，但允许透传以保持类型兼容）
   sharedMemoryAcrossConversations?: boolean;
 }): SessionContext {
   const {
@@ -54,8 +53,22 @@ export function buildSessionContext(params: {
     groupSubject,
     separateSessionByConversation,
     groupSessionScope,
+    sharedMemoryAcrossConversations,
   } = params;
   const isDirect = conversationType === '1';
+
+  // sharedMemoryAcrossConversations=true 时，所有会话共享记忆
+  if (sharedMemoryAcrossConversations === true) {
+    return {
+      channel: 'dingtalk-connector',
+      accountId,
+      chatType: isDirect ? 'direct' : 'group',
+      peerId: accountId, // 使用 accountId 作为 peerId，实现跨会话记忆共享
+      conversationId: isDirect ? undefined : conversationId,
+      senderName,
+      groupSubject: isDirect ? undefined : groupSubject,
+    };
+  }
 
   // separateSessionByConversation=false 时，不区分单聊/群聊，按用户维度维护 session
   if (separateSessionByConversation === false) {
@@ -130,7 +143,17 @@ const apiTokenCache = new Map<string, CachedToken>();
 const oapiTokenCache = new Map<string, CachedToken>();
 
 function cacheKey(config: DingtalkConfig): string {
-  return String((config as any)?.clientId ?? '').trim();
+  const clientId = String((config as any)?.clientId ?? '').trim();
+  
+  // 添加校验
+  if (!clientId) {
+    throw new Error(
+      'Invalid DingtalkConfig: clientId is required for token caching. ' +
+      'Please ensure your configuration includes a valid clientId.'
+    );
+  }
+  
+  return clientId;
 }
 
 /**
@@ -186,8 +209,16 @@ export async function getOapiAccessToken(config: DingtalkConfig): Promise<string
 
 // ============ 用户 ID 转换 ============
 
-/** staffId → unionId 缓存 */
-const unionIdCache = new Map<string, string>();
+/** staffId → unionId 缓存（带过期时间的 LRU 缓存） */
+const MAX_UNION_ID_CACHE_SIZE = 1000;
+const UNION_ID_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时
+
+interface UnionIdCacheEntry {
+  unionId: string;
+  timestamp: number;
+}
+
+const unionIdCache = new Map<string, UnionIdCacheEntry>();
 
 /**
  * 通过 oapi 旧版接口将 staffId 转换为 unionId
@@ -197,8 +228,11 @@ export async function getUnionId(
   config: DingtalkConfig,
   log?: any,
 ): Promise<string | null> {
+  // 检查缓存
   const cached = unionIdCache.get(staffId);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.timestamp < UNION_ID_CACHE_TTL) {
+    return cached.unionId;
+  }
 
   try {
     const token = await getOapiAccessToken(config);
@@ -213,7 +247,25 @@ export async function getUnionId(
     });
     const unionId = resp.data?.unionid;
     if (unionId) {
-      unionIdCache.set(staffId, unionId);
+      // 写入缓存前检查大小
+      if (unionIdCache.size >= MAX_UNION_ID_CACHE_SIZE) {
+        // 删除最旧的条目
+        let oldestKey: string | null = null;
+        let oldestTime = Date.now();
+        
+        for (const [key, entry] of unionIdCache.entries()) {
+          if (entry.timestamp < oldestTime) {
+            oldestTime = entry.timestamp;
+            oldestKey = key;
+          }
+        }
+        
+        if (oldestKey) {
+          unionIdCache.delete(oldestKey);
+        }
+      }
+      
+      unionIdCache.set(staffId, { unionId, timestamp: Date.now() });
       log?.info?.(`[DingTalk] getUnionId: ${staffId} → ${unionId}`);
       return unionId;
     }
@@ -233,6 +285,9 @@ const processedMessages = new Map<string, number>();
 /** 消息去重缓存过期时间（5分钟） */
 const MESSAGE_DEDUP_TTL = 5 * 60 * 1000;
 
+/** 定时清理器 */
+let cleanupTimer: NodeJS.Timeout | null = null;
+
 /**
  * 清理过期的消息去重缓存
  */
@@ -242,6 +297,28 @@ export function cleanupProcessedMessages(): void {
     if (now - timestamp > MESSAGE_DEDUP_TTL) {
       processedMessages.delete(msgId);
     }
+  }
+}
+
+/**
+ * 启动定时清理机制
+ */
+export function startMessageCleanup(): void {
+  if (cleanupTimer) return; // 防止重复启动
+  
+  // 每 5 分钟清理一次
+  cleanupTimer = setInterval(() => {
+    cleanupProcessedMessages();
+  }, 5 * 60 * 1000);
+}
+
+/**
+ * 停止定时清理机制
+ */
+export function stopMessageCleanup(): void {
+  if (cleanupTimer) {
+    clearInterval(cleanupTimer);
+    cleanupTimer = null;
   }
 }
 

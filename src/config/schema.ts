@@ -128,4 +128,17 @@ export const DingtalkConfigSchema = z
         });
       }
     }
+    
+    // Validate groupPolicy and groupAllowFrom consistency
+    if (value.groupPolicy === "allowlist") {
+      const groupAllowFrom = value.groupAllowFrom ?? [];
+      if (groupAllowFrom.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["groupAllowFrom"],
+          message:
+            'channels.dingtalk-connector.groupPolicy="allowlist" requires channels.dingtalk-connector.groupAllowFrom to contain at least one entry',
+        });
+      }
+    }
   });

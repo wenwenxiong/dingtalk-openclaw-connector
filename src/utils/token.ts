@@ -25,8 +25,17 @@ const apiTokenCache = new Map<string, CachedToken>();
 const oapiTokenCache = new Map<string, CachedToken>();
 
 function cacheKey(config: DingtalkConfig): string {
-  // clientId 可能来自多账号合并配置，理论上必填；这里做兜底避免 Map key 为 undefined
-  return String((config as any)?.clientId ?? '').trim();
+  const clientId = String((config as any)?.clientId ?? '').trim();
+  
+  // 添加校验
+  if (!clientId) {
+    throw new Error(
+      'Invalid DingtalkConfig: clientId is required for token caching. ' +
+      'Please ensure your configuration includes a valid clientId.'
+    );
+  }
+  
+  return clientId;
 }
 
 /**

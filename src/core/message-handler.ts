@@ -374,11 +374,33 @@ export async function downloadFileToLocal(
     const mediaDir = path.join(agentWorkspaceDir, 'media', 'inbound');
     fs.mkdirSync(mediaDir, { recursive: true });
     
+    // 安全过滤文件名
+    const sanitizeFileName = (name: string): string => {
+      // 移除路径分隔符，防止目录遍历攻击
+      let safe = name.replace(/[/\\]/g, '_');
+      // 移除或替换危险字符
+      safe = safe.replace(/[<>:"|?*\x00-\x1f]/g, '_');
+      // 移除开头的点，防止隐藏文件
+      safe = safe.replace(/^\.+/, '');
+      // 限制长度
+      if (safe.length > 200) {
+        const ext = path.extname(safe);
+        const base = path.basename(safe, ext);
+        safe = base.substring(0, 200 - ext.length) + ext;
+      }
+      // 如果处理后为空，使用默认名称
+      if (!safe) {
+        safe = 'unnamed_file';
+      }
+      return safe;
+    };
+    
     // 保留原始文件名，但添加时间戳避免冲突
     const ext = path.extname(fileName);
     const baseName = path.basename(fileName, ext);
     const timestamp = Date.now();
-    const safeFileName = `${baseName}-${timestamp}${ext}`;
+    const safeBaseName = sanitizeFileName(baseName);
+    const safeFileName = `${safeBaseName}-${timestamp}${ext}`;
     const localPath = path.join(mediaDir, safeFileName);
     
     fs.writeFileSync(localPath, buffer);
@@ -1022,12 +1044,10 @@ async function handleDingTalkMessageInternal(params: HandleMessageParams): Promi
         dispatcher,
         onSettled: () => {
           log?.info?.(`onSettled 被调用`);
-          log?.info?.(`onSettled 被调用`);
           markDispatchIdle();
         },
         run: async () => {
           log?.info?.(`run 被调用，开始 dispatchReplyFromConfig`);
-          log?.info?.(`run 被调用`);
           log?.info?.(`ctxPayload.SessionKey=${ctxPayload.SessionKey}`);
           log?.info?.(`ctxPayload.Body 长度=${ctxPayload.Body?.length || 0}`);
           log?.info?.(`replyOptions keys=${Object.keys(replyOptions).join(',')}`);
@@ -1056,7 +1076,6 @@ async function handleDingTalkMessageInternal(params: HandleMessageParams): Promi
     
     const { queuedFinal, counts } = dispatchResult;
     log?.info?.(`SDK dispatch 完成: queuedFinal=${queuedFinal}, replies=${counts.final}, asyncMode=${asyncMode}`);
-    log?.info?.(`SDK dispatch 完成: queuedFinal=${queuedFinal}, replies=${counts.final}`);
 
     // ===== 异步模式：主动推送最终结果 =====
     if (asyncMode) {

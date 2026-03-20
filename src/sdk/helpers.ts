@@ -13,7 +13,7 @@ import type { SecretInput, SecretInputRef } from "./types/index.ts";
 /**
  * 默认账号 ID
  */
-export const DEFAULT_ACCOUNT_ID = "default" as const;
+export const DEFAULT_ACCOUNT_ID = "__default__" as const;
 
 /**
  * 规范化账号 ID

@@ -466,7 +466,23 @@ export async function monitorSingleAccount(
       
       try {
         // 解析消息数据
-        const data = JSON.parse(res.data);
+        let data;
+        try {
+          data = JSON.parse(res.data);
+        } catch (parseError: any) {
+          logger.error('Failed to parse response data as JSON:', {
+            error: parseError instanceof Error ? parseError.message : String(parseError),
+            rawData: typeof res.data === 'string' 
+              ? res.data.substring(0, 500) // 只记录前 500 字符
+              : res.data,
+            dataType: typeof res.data,
+          });
+          throw new Error(
+            `Invalid JSON response from DingTalk API. ` +
+            `Error: ${parseError instanceof Error ? parseError.message : String(parseError)}. ` +
+            `Raw data (first 100 chars): ${String(res.data).substring(0, 100)}`
+          );
+        }
 
         // ===== 第二步：记录解析后的消息详情 =====
         logger.info(`\n----- 消息详情 -----`);
@@ -564,10 +580,10 @@ export async function monitorSingleAccount(
         stop();
       };
 
-      // 进程退出时清理
-      process.on("exit", enhancedCleanup);
-      process.on("SIGINT", enhancedCleanup);
-      process.on("SIGTERM", enhancedCleanup);
+      // 进程退出时清理（使用 once 确保只执行一次）
+      process.once("exit", enhancedCleanup);
+      process.once("SIGINT", enhancedCleanup);
+      process.once("SIGTERM", enhancedCleanup);
     } catch (error: any) {
       cleanup(); // 连接失败时清理资源
 
@@ -585,7 +601,7 @@ export async function monitorSingleAccount(
           `[DingTalk][${accountId}] Bad Request (400):\n` +
             `  - clientId or clientSecret format is invalid\n` +
             `  - clientId: ${clientIdStr} (type: ${typeof account.clientId}, length: ${clientIdStr.length})\n` +
-            `  - clientSecret: ${clientSecretStr.substring(0, 8)}... (type: ${typeof account.clientSecret}, length: ${clientSecretStr.length})\n` +
+            `  - clientSecret: ****** (type: ${typeof account.clientSecret}, length: ${clientSecretStr.length})\n` +
             `  - Common issues:\n` +
             `    1. clientId/clientSecret must be strings, not numbers\n` +
             `    2. Remove any quotes or special characters\n` +

@@ -24,6 +24,7 @@ const AICardStatus = {
 export interface AICardInstance {
   cardInstanceId: string;
   accessToken: string;
+  tokenExpireTime: number;
   inputingStarted: boolean;
 }
 
@@ -168,7 +169,10 @@ export async function createAICardForTarget(
       },
     );
 
-    return { cardInstanceId, accessToken: token, inputingStarted: false };
+    // 记录 token 过期时间（钉钉 token 有效期 2 小时）
+    const tokenExpireTime = Date.now() + 2 * 60 * 60 * 1000;
+    
+    return { cardInstanceId, accessToken: token, tokenExpireTime, inputingStarted: false };
   } catch (err: any) {
     log?.error?.(
       `[DingTalk][AICard] 创建卡片失败 (${targetDesc}): ${err.message}`,
@@ -183,14 +187,35 @@ export async function createAICardForTarget(
 }
 
 /**
+ * 确保 Token 有效（自动刷新过期的 Token）
+ */
+async function ensureValidToken(
+  card: AICardInstance,
+  config: DingtalkConfig,
+): Promise<string> {
+  // 如果 token 即将过期（提前 5 分钟刷新）
+  if (Date.now() > card.tokenExpireTime - 5 * 60 * 1000) {
+    const newToken = await getAccessToken(config);
+    card.accessToken = newToken;
+    card.tokenExpireTime = Date.now() + 2 * 60 * 60 * 1000;
+  }
+  return card.accessToken;
+}
+
+/**
  * 流式更新 AI Card 内容
  */
 export async function streamAICard(
   card: AICardInstance,
   content: string,
   finished: boolean = false,
+  config?: DingtalkConfig,
   log?: any,
 ): Promise<void> {
+  // 确保 token 有效
+  if (config) {
+    await ensureValidToken(card, config);
+  }
   if (!card.inputingStarted) {
     const statusBody = {
       outTrackId: card.cardInstanceId,
@@ -267,8 +292,13 @@ export async function streamAICard(
 export async function finishAICard(
   card: AICardInstance,
   content: string,
+  config?: DingtalkConfig,
   log?: any,
 ): Promise<void> {
+  // 确保 token 有效
+  if (config) {
+    await ensureValidToken(card, config);
+  }
   const fixedContent = ensureTableBlankLines(content);
   log?.info?.(
     `[DingTalk][AICard] 开始 finish，最终内容长度=${fixedContent.length}`,
