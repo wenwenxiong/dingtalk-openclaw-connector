@@ -102,8 +102,18 @@ export async function monitorSingleAccount(
   logger.info(`WebSocket keepAlive: false (using application-layer heartbeat)`);
 
   // 🔧 修复代理问题：禁用 axios 的代理配置
-  // 注意：dingtalk-stream 内部使用 axios，但我们已经通过专用的 HTTP 客户端
-  // （见 src/utils/http-client.ts）处理了代理问题，这里不需要额外配置
+  // 问题：dingtalk-stream SDK 内部使用 axios，会被系统 PAC 文件影响
+  // 解决：在导入 dingtalk-stream 之前，先导入 axios 并禁用全局代理
+  // 注意：这会影响 dingtalk-stream SDK 内部的 axios，与 src/utils/http-client.ts 是两个不同的配置
+  try {
+    const axios = (await import("axios")).default;
+    if (axios.defaults) {
+      axios.defaults.proxy = false; // 禁用全局代理
+      logger.debug(`已禁用 axios 全局代理配置（用于 dingtalk-stream SDK）`);
+    }
+  } catch (err) {
+    logger.warn(`无法配置 axios 代理设置: ${err}`);
+  }
 
   // 动态导入 dingtalk-stream 模块（避免循环依赖和 ESM/CJS 兼容性问题）
   const dingtalkStreamModule = await import("dingtalk-stream");
