@@ -11,7 +11,7 @@
 ```
 消息到达
   ↓
-buildSessionContext()        ← 构建会话上下文（含 rawPeerId / peerId）
+buildSessionContext()        ← 构建会话上下文（含 peerId / sessionPeerId）
   ↓
 遍历 cfg.bindings[]          ← 按顺序逐条匹配
   ↓ 命中第一条
@@ -42,8 +42,8 @@ for (const binding of cfg.bindings) {
   if (match.accountId && match.accountId !== accountId) continue;
   if (match.peer) {
     if (match.peer.kind && match.peer.kind !== chatType) continue;
-    // ⚠️ 关键：使用 rawPeerId（原始 peer 标识），而非 peerId
-    if (match.peer.id && match.peer.id !== '*' && match.peer.id !== rawPeerId) continue;
+    // ⚠️ 关键：使用 peerId（真实 peer 标识），而非 sessionPeerId
+    if (match.peer.id && match.peer.id !== '*' && match.peer.id !== peerId) continue;
   }
   // 命中，使用此 agentId
   matchedAgentId = binding.agentId;
@@ -162,14 +162,14 @@ for (const binding of cfg.bindings) {
 
 ### 根因
 
-`sharedMemoryAcrossConversations: true` 时，`buildSessionContext()` 将 `peerId` 设为 `accountId`（如 `"groupbot"`），以实现跨会话记忆共享：
+`sharedMemoryAcrossConversations: true` 时，`buildSessionContext()` 将 `sessionPeerId` 设为 `accountId`（如 `"groupbot"`），以实现跨会话记忆共享。而修复前的代码将 `peerId` 直接用于路由匹配，导致问题：
 
 ```typescript
 // src/utils/session.ts（修复前的错误逻辑）
 if (sharedMemoryAcrossConversations === true) {
   return {
     peerId: accountId, // ← 所有群的 peerId 都变成 "groupbot"！
-    // ...
+    // rawPeerId 字段不存在
   };
 }
 ```
@@ -177,7 +177,7 @@ if (sharedMemoryAcrossConversations === true) {
 而 binding 匹配逻辑（修复前）使用 `sessionContext.peerId` 与 `match.peer.id` 比较：
 
 ```typescript
-// 修复前：用 peerId 匹配
+// 修复前：用 peerId 匹配（此时 peerId 已被覆盖为 accountId）
 if (match.peer.id !== sessionContext.peerId) continue;
 // 结果：match.peer.id = "cid3RKewszsVbXZYCYmbybVNw=="
 //       sessionContext.peerId = "groupbot"
@@ -186,30 +186,32 @@ if (match.peer.id !== sessionContext.peerId) continue;
 
 ### 修复方案（已于 2026-03-23 修复）
 
-在 `SessionContext` 中新增 `rawPeerId` 字段，保留原始 peer 标识（群聊为 `conversationId`，单聊为 `senderId`），不受任何会话隔离配置影响。
+将 `SessionContext` 重构为两个职责分离的字段：
+- `peerId`：真实 peer 标识，不受任何会话隔离配置影响，专用于路由匹配
+- `sessionPeerId`：session 隔离键，受会话隔离配置影响，用于构建 `sessionKey`
 
-路由匹配改为使用 `rawPeerId`：
+路由匹配改为使用 `peerId`：
 
 ```typescript
-// 修复后：用 rawPeerId 匹配
-if (match.peer.id !== sessionContext.rawPeerId) continue;
+// 修复后：用 peerId 匹配（始终是真实的 conversationId/senderId）
+if (match.peer.id !== sessionContext.peerId) continue;
 // 结果：match.peer.id = "cid3RKewszsVbXZYCYmbybVNw=="
-//       sessionContext.rawPeerId = "cid3RKewszsVbXZYCYmbybVNw=="
+//       sessionContext.peerId = "cid3RKewszsVbXZYCYmbybVNw=="
 // → 正确命中
 ```
 
 涉及文件：
-- `src/utils/session.ts`：`SessionContext` 接口新增 `rawPeerId`，`buildSessionContext()` 所有分支均填充 `rawPeerId`
-- `src/core/message-handler.ts`：两处 binding 匹配逻辑均改为使用 `rawPeerId`
+- `src/utils/session.ts`：`SessionContext` 接口字段 `peerId`（真实标识）+ `sessionPeerId`（session 隔离键），`buildSessionContext()` 所有分支均正确填充两个字段
+- `src/core/message-handler.ts`：两处 binding 匹配逻辑均使用 `peerId`，sessionKey 构建使用 `sessionPeerId`
 
 ---
 
-## 六、会话隔离配置对 peerId 的影响
+## 六、会话隔离配置对 sessionPeerId 的影响
 
-以下配置影响 `peerId`（用于 session/memory 隔离），**不影响 `rawPeerId`（路由匹配）**：
+以下配置影响 `sessionPeerId`（用于 session/memory 隔离），**不影响 `peerId`（路由匹配）**：
 
-| 配置 | peerId 值 | 效果 |
-|------|-----------|------|
+| 配置 | sessionPeerId 值 | 效果 |
+|------|-----------------|------|
 | `sharedMemoryAcrossConversations: true` | `accountId` | 所有会话共享同一记忆 |
 | `separateSessionByConversation: false` | `senderId` | 按用户维度维护 session，不区分群/单聊 |
 | `groupSessionScope: "group_sender"` | `${conversationId}:${senderId}` | 群内每个用户独立会话 |
@@ -220,6 +222,6 @@ if (match.peer.id !== sessionContext.rawPeerId) continue;
 
 ## 七、设计原则总结
 
-1. **路由匹配用 `rawPeerId`**：binding 中的 `match.peer.id` 始终对应真实的 `conversationId`（群）或 `senderId`（单聊），与会话隔离策略无关
-2. **session 隔离用 `peerId`**：`sessionKey` 的构建使用 `peerId`，受会话隔离配置影响，决定记忆/上下文的共享范围
+1. **路由匹配用 `peerId`**：binding 中的 `match.peer.id` 始终对应真实的 `conversationId`（群）或 `senderId`（单聊），与会话隔离策略无关
+2. **session 隔离用 `sessionPeerId`**：`sessionKey` 的构建使用 `sessionPeerId`，受会话隔离配置影响，决定记忆/上下文的共享范围
 3. **两者职责分离**：路由（去哪个 Agent）和记忆隔离（共享多大范围的上下文）是两个独立的维度，不应相互干扰
