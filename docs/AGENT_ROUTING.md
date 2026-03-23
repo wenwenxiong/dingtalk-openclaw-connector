@@ -8,16 +8,25 @@
 
 ---
 
-## 一、核心概念：两个职责分离的字段
+## 一、SessionContext 字段总览
 
-`buildSessionContext()` 返回的 `SessionContext` 包含两个 peer 标识字段，**职责严格分离，不能混用**：
+`buildSessionContext()` 返回的 `SessionContext` 包含以下字段：
 
-| 字段 | 职责 | 受配置影响 |
-|------|------|-----------|
-| `peerId` | **路由匹配专用**，始终是真实的 peer 标识（群聊为 `conversationId`，单聊为 `senderId`） | ❌ 不受任何会话隔离配置影响 |
-| `sessionPeerId` | **session/memory 隔离键**，用于构建 `sessionKey` 和消息队列 key | ✅ 受 `sharedMemoryAcrossConversations`、`separateSessionByConversation`、`groupSessionScope` 影响 |
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `channel` | `'dingtalk-connector'` | 固定值，标识频道来源 |
+| `accountId` | `string` | 当前钉钉账号 ID |
+| `chatType` | `'direct' \| 'group'` | 会话类型，单聊或群聊 |
+| `peerId` | `string` | **路由匹配专用**，真实 peer 标识（群聊为 `conversationId`，单聊为 `senderId`），**不受任何会话隔离配置影响** |
+| `sessionPeerId` | `string` | **session/memory 隔离键**，用于构建 `sessionKey` 和消息队列 key，**受会话隔离配置影响，可能与 `peerId` 不同** |
+| `conversationId` | `string?` | 群聊会话 ID，单聊时为 `undefined` |
+| `senderName` | `string?` | 发送者昵称 |
+| `groupSubject` | `string?` | 群名称，单聊时为 `undefined` |
 
-**核心原则**：
+其中 `channel`、`accountId`、`chatType`、`conversationId`、`senderName`、`groupSubject` 都是直接从消息原始字段透传的，没有歧义。
+
+**需要特别注意的是 `peerId` 和 `sessionPeerId` 这两个字段**，它们都是 peer 标识，但职责完全不同，**不能混用**：
+
 - **路由匹配（去哪个 Agent）** → 使用 `peerId`
 - **session 隔离（共享多大范围的上下文）** → 使用 `sessionPeerId`
 
