@@ -990,12 +990,12 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
       GroupSubject: isDirect ? undefined : data.conversationTitle,
       SenderName: senderName,
       SenderId: senderId,
-      Provider: "dingtalk" as const,
-      Surface: "dingtalk" as const,
+      Provider: "dingtalk-connector" as const,
+      Surface: "dingtalk-connector" as const,
       MessageSid: data.msgId,
       Timestamp: Date.now(),
       CommandAuthorized: true,
-      OriginatingChannel: "dingtalk" as const,
+      OriginatingChannel: "dingtalk-connector" as const,
       OriginatingTo: toField,  // ✅ 修复：应该使用 toField，而不是 accountId
     });
 
