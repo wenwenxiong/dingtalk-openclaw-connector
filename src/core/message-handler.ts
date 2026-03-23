@@ -695,8 +695,10 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
     sharedMemoryAcrossConversations: config.sharedMemoryAcrossConversations,
   });
 
-  // ===== 解析 agentId 和工作空间路径（在 sessionContext 之后，确保 peerId 与会话隔离策略一致）=====
-  // 使用 sessionContext.peerId 进行匹配，与后续 sessionKey 构建保持一致，避免两次匹配结果不一致
+  // ===== 解析 agentId 和工作空间路径（在 sessionContext 之后，确保 chatType 与会话隔离策略一致）=====
+  // 使用 sessionContext.peerId 进行匹配（真实的 conversationId/senderId，与 match.peer.id 语义一致）。
+  // 注意：不能使用 sessionContext.sessionPeerId，它受 sharedMemoryAcrossConversations 等配置影响，
+  // 可能被设为 accountId，导致不同群/用户的消息匹配到同一个 binding，路由错误。
   let matchedAgentId: string | null = null;
   if (cfg.bindings && cfg.bindings.length > 0) {
     for (const binding of cfg.bindings) {
@@ -946,18 +948,18 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
     const matchedBy = matchedAgentId !== (cfg.defaultAgent || 'main') ? 'binding' : 'default';
     
     // ✅ 使用 SDK 标准方法构建 sessionKey，符合 OpenClaw 规范
-    // 格式：agent:{agentId}:{channel}:{peerKind}:{peerId}
-    // ✅ 修复：使用 sessionContext.peerId，确保会话隔离配置生效
+    // 格式：agent:{agentId}:{channel}:{peerKind}:{sessionPeerId}
+    // ✅ 使用 sessionContext.sessionPeerId 构建 sessionKey，确保会话隔离配置生效
     // ✅ 关键修复：传递 dmScope 参数，让 SDK 使用配置文件中的 session.dmScope 设置
     const dmScope = cfg.session?.dmScope || 'per-channel-peer';
-    log?.info?.(`🔍 构建 sessionKey 前的参数: agentId=${matchedAgentId}, channel=dingtalk-connector, accountId=${accountId}, chatType=${sessionContext.chatType}, peerId=${sessionContext.peerId}, dmScope=${dmScope}`);
+    log?.info?.(`🔍 构建 sessionKey 前的参数: agentId=${matchedAgentId}, channel=dingtalk-connector, accountId=${accountId}, chatType=${sessionContext.chatType}, sessionPeerId=${sessionContext.sessionPeerId}, dmScope=${dmScope}`);
     const sessionKey = core.channel.routing.buildAgentSessionKey({
       agentId: matchedAgentId,
       channel: 'dingtalk-connector',  // ✅ 使用 'dingtalk-connector' 而不是 'dingtalk'
       accountId: accountId,
       peer: {
-        kind: sessionContext.chatType,  // ✅ 使用 sessionContext.chatType
-        id: sessionContext.peerId,      // ✅ 使用 sessionContext.peerId（包含会话隔离逻辑）
+        kind: sessionContext.chatType,       // ✅ 使用 sessionContext.chatType
+        id: sessionContext.sessionPeerId,    // ✅ 使用 sessionContext.sessionPeerId（包含会话隔离逻辑）
       },
       dmScope: dmScope,  // ✅ 传递 dmScope 参数，确保生成完整格式的 sessionKey
     });
@@ -1180,15 +1182,17 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
     sharedMemoryAcrossConversations: config.sharedMemoryAcrossConversations,
   });
 
-  const baseSessionId = queueSessionContext.peerId;
+  const baseSessionId = queueSessionContext.sessionPeerId;
 
   if (!baseSessionId) {
     log?.warn?.('无法构建会话标识，跳过队列管理');
     return handleDingTalkMessageInternal(params);
   }
 
-  // 解析 agentId：使用 sessionContext.peerId 和 sessionContext.chatType 进行匹配
-  // 与 handleDingTalkMessageInternal 中的匹配逻辑保持一致
+  // 解析 agentId：使用 queueSessionContext.peerId（真实 peer 标识）进行匹配
+  // 与 handleDingTalkMessageInternal 中的匹配逻辑保持一致。
+  // 必须使用 peerId 而非 sessionPeerId，原因：sharedMemoryAcrossConversations=true 时
+  // sessionPeerId 被设为 accountId，导致不同群的消息匹配到同一个 binding。
   let matchedAgentId: string | null = null;
   if (cfg.bindings && cfg.bindings.length > 0) {
     for (const binding of cfg.bindings) {
