@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.4] - 2026-03-24
 
 ### 修复 / Fixes
+- 🐛 **群聊消息处理崩溃** - 修复群聊时报错 `TypeError: Cannot read properties of undefined (reading 'config')` 导致 Agent 无法回复的问题。根因是 `src/policy.ts` 中 `resolveDingtalkGroupToolPolicy` 函数的参数签名与 OpenClaw SDK 的 `ChannelGroupContext` 接口不匹配，函数期望接收 `account: ResolvedDingtalkAccount`，但框架实际传入 `{ cfg, groupId, accountId, ... }`，导致 `account` 为 `undefined`。现已修正参数签名，内部通过 `resolveDingtalkAccount()` 正确获取账号信息。单聊不受影响。  
+  **Group chat message processing crash** - Fixed `TypeError: Cannot read properties of undefined (reading 'config')` crash in group chats. Root cause: `resolveDingtalkGroupToolPolicy` in `src/policy.ts` had a parameter signature mismatch with the OpenClaw SDK's `ChannelGroupContext` interface. Fixed by correcting the parameter signature and resolving the account internally via `resolveDingtalkAccount()`. Direct messages were unaffected.
+
 - 🐛 **兼容旧版 OpenClaw Gateway（createPluginRuntimeStore 缺失）** - 修复在旧版 OpenClaw Gateway 上加载插件时报错 `TypeError: (0 , _pluginSdk.createPluginRuntimeStore) is not a function` 的问题。根因是 `src/runtime.ts` 直接从 `openclaw/plugin-sdk` 导入 `createPluginRuntimeStore`，而该函数在旧版 SDK 中并不存在。现已替换为内联实现的 `createRuntimeStore`，功能完全等价，兼容所有版本的 OpenClaw  
   **Compatible with older OpenClaw Gateway (missing createPluginRuntimeStore)** - Fixed `TypeError: (0 , _pluginSdk.createPluginRuntimeStore) is not a function` when loading the plugin on older OpenClaw Gateway versions. Root cause: `src/runtime.ts` imported `createPluginRuntimeStore` from `openclaw/plugin-sdk`, which doesn't exist in older SDK versions. Replaced with an inline `createRuntimeStore` implementation that is fully equivalent and compatible with all OpenClaw versions
 

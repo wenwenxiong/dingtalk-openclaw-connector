@@ -16,6 +16,10 @@ v0.8.4 is a compatibility fix release that resolves plugin loading failures on o
   将 `package.json` 中的 `"openclaw": "^2026.3.0"` 改为 `"openclaw": "*"`。openclaw 由框架环境提供，插件不应限制其版本范围，避免版本约束导致安装失败或与用户已安装版本冲突。  
   Changed `"openclaw": "^2026.3.0"` to `"openclaw": "*"` in `package.json`. Since openclaw is provided by the framework environment, the plugin should not restrict its version range to avoid installation failures or conflicts with the user's installed version.
 
+- **群聊消息处理崩溃 / Group chat message processing crash**  
+  修复群聊时报错 `TypeError: Cannot read properties of undefined (reading 'config')` 导致 Agent 无法回复的问题。根因是 `src/policy.ts` 中 `resolveDingtalkGroupToolPolicy` 函数的参数签名与 OpenClaw SDK 的 `ChannelGroupContext` 接口不匹配——函数期望接收 `account: ResolvedDingtalkAccount`，但框架实际传入的是 `{ cfg, groupId, accountId, ... }`，导致 `account` 为 `undefined`。现已修正参数签名，内部通过 `resolveDingtalkAccount()` 正确获取账号信息。单聊不受影响（该函数仅在群聊场景下被框架调用）。  
+  Fixed `TypeError: Cannot read properties of undefined (reading 'config')` crash in group chats that prevented the Agent from replying. Root cause: `resolveDingtalkGroupToolPolicy` in `src/policy.ts` had a parameter signature mismatch with the OpenClaw SDK's `ChannelGroupContext` interface — the function expected `account: ResolvedDingtalkAccount`, but the framework passes `{ cfg, groupId, accountId, ... }`, leaving `account` as `undefined`. Fixed by correcting the parameter signature and resolving the account internally via `resolveDingtalkAccount()`. Direct messages were unaffected (this function is only called by the framework in group chat scenarios).
+
 ## 📥 安装升级 / Installation & Upgrade
 
 ```bash
