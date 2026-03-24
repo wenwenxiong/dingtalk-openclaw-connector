@@ -1,13 +1,10 @@
-import type {
-  ClawdbotConfig,
-  RuntimeEnv,
-  ReplyPayload,
-} from "openclaw/plugin-sdk";
+import type { ClawdbotConfig, RuntimeEnv } from "openclaw/plugin-sdk/runtime";
+import type { ReplyPayload } from "openclaw/plugin-sdk/reply-payload";
 import {
   createReplyPrefixOptions,
   createTypingCallbacks,
   logTypingFailure,
-} from "openclaw/plugin-sdk";
+} from "openclaw/plugin-sdk/channel-runtime";
 import { resolveDingtalkAccount } from "./config/accounts.ts";
 import { getDingtalkRuntime } from "./runtime.ts";
 import type { DingtalkConfig } from "./types/index.ts";
