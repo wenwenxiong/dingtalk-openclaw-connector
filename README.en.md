@@ -19,6 +19,7 @@
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 - [Advanced Topics](#advanced-topics)
+- [DingTalk DEAP Agent Integration](docs/DEAP_AGENT_GUIDE.en.md)
 - [License](#license)
 
 ---
@@ -457,6 +458,12 @@ dingtalk-openclaw-connector/
 | `axios` | HTTP client |
 | `mammoth` | Word document (.docx) parsing |
 | `pdf-parse` | PDF document parsing |
+
+---
+
+## DingTalk DEAP Agent Integration
+
+Connect DingTalk DEAP Agent with OpenClaw Gateway to enable natural language-driven local device operations. See **[DingTalk DEAP Agent Integration Guide](docs/DEAP_AGENT_GUIDE.en.md)** for details.
 
 ---
 

@@ -19,6 +19,7 @@
 - [配置说明](#配置说明)
 - [常见问题](#常见问题)
 - [进阶主题](#进阶主题)
+- [钉钉 DEAP Agent 集成](docs/DEAP_AGENT_GUIDE.md)
 - [许可证](#许可证)
 
 ---
@@ -500,6 +501,12 @@ dingtalk-openclaw-connector/
 | `axios` | HTTP 客户端 |
 | `mammoth` | Word 文档（.docx）解析 |
 | `pdf-parse` | PDF 文档解析 |
+
+---
+
+## 钉钉 DEAP Agent 集成
+
+通过钉钉 DEAP Agent 与 OpenClaw Gateway 连接，实现自然语言驱动的本地设备操作能力。详见 **[钉钉 DEAP Agent 集成指南](docs/DEAP_AGENT_GUIDE.md)**。
 
 ---
 
